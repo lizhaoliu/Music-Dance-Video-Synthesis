@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 
-from net.utils.tgcn import ConvTemporalGraphical
 from net.utils.graph import Graph
+from net.utils.tgcn import ConvTemporalGraphical
+
 
 class Model(nn.Module):
     r"""Spatial temporal graph convolutional networks.
@@ -67,18 +67,19 @@ class Model(nn.Module):
         self.fcn = nn.Conv2d(256, num_class, kernel_size=1)
 
     def forward(self, x):
-        #in bsz,50,36
-        bsz,time,feature = x.size()
-        x = x.contiguous().view(bsz,time,18,2).permute(0,3,1,2).unsqueeze(4)
+        # in bsz,50,36
+        bsz, time, feature = x.size()
+        x = x.contiguous().view(bsz, time, 18, 2).permute(0, 3, 1, 2).unsqueeze(
+            4)
         # data normalization
-        N, C, T, V, M = x.size() # bsz,2,50,18,1
+        N, C, T, V, M = x.size()  # bsz,2,50,18,1
         x = x.permute(0, 4, 3, 1, 2).contiguous()
         x = x.view(N * M, V * C, T)
         x = self.data_bn(x)
         x = x.view(N, M, V, C, T)
         x = x.permute(0, 1, 3, 4, 2).contiguous()
         x = x.view(N * M, C, T, V)
-        
+
         # forwad
         for gcn, importance in zip(self.st_gcn_networks, self.edge_importance):
             x, _ = gcn(x, self.A * importance)
@@ -94,9 +95,10 @@ class Model(nn.Module):
         return x
 
     def extract_feature(self, x):
-        #in bsz,50,36
-        bsz,time,feature = x.size()
-        x = x.contiguous().view(bsz,time,18,2).permute(0,3,1,2).unsqueeze(4)
+        # in bsz,50,36
+        bsz, time, feature = x.size()
+        x = x.contiguous().view(bsz, time, 18, 2).permute(0, 3, 1, 2).unsqueeze(
+            4)
         # data normalization
         N, C, T, V, M = x.size()
         x = x.permute(0, 4, 3, 1, 2).contiguous()
@@ -113,26 +115,34 @@ class Model(nn.Module):
             out.append(x)
         return out
 
+
 class st_gcn(nn.Module):
-    r"""Applies a spatial temporal graph convolution over an input graph sequence.
+    r"""Applies a spatial temporal graph convolution over an input graph
+    sequence.
 
     Args:
         in_channels (int): Number of channels in the input sequence data
         out_channels (int): Number of channels produced by the convolution
-        kernel_size (tuple): Size of the temporal convolving kernel and graph convolving kernel
+        kernel_size (tuple): Size of the temporal convolving kernel and graph
+        convolving kernel
         stride (int, optional): Stride of the temporal convolution. Default: 1
         dropout (int, optional): Dropout rate of the final output. Default: 0
-        residual (bool, optional): If ``True``, applies a residual mechanism. Default: ``True``
+        residual (bool, optional): If ``True``, applies a residual mechanism.
+        Default: ``True``
 
     Shape:
-        - Input[0]: Input graph sequence in :math:`(N, in_channels, T_{in}, V)` format
+        - Input[0]: Input graph sequence in :math:`(N, in_channels, T_{in},
+        V)` format
         - Input[1]: Input graph adjacency matrix in :math:`(K, V, V)` format
-        - Output[0]: Outpu graph sequence in :math:`(N, out_channels, T_{out}, V)` format
-        - Output[1]: Graph adjacency matrix for output data in :math:`(K, V, V)` format
+        - Output[0]: Outpu graph sequence in :math:`(N, out_channels,
+        T_{out}, V)` format
+        - Output[1]: Graph adjacency matrix for output data in :math:`(K, V,
+        V)` format
 
         where
             :math:`N` is a batch size,
-            :math:`K` is the spatial kernel size, as :math:`K == kernel_size[1]`,
+            :math:`K` is the spatial kernel size, as :math:`K == kernel_size[
+            1]`,
             :math:`T_{in}/T_{out}` is a length of input/output sequence,
             :math:`V` is the number of graph nodes.
 
@@ -194,21 +204,27 @@ class st_gcn(nn.Module):
 
         return self.relu(x), A
 
+
 class GCNLoss(nn.Module):
-    def __init__(self,dict_path="/home/xuanchi/August/gcn_dance/log/dropout/generator_799.pth"):
+    def __init__(self,
+                 dict_path="/home/xuanchi/August/gcn_dance/log/dropout"
+                           "/generator_799.pth"):
         super(GCNLoss, self).__init__()
-        graph_args={"layout": 'openpose',"strategy": 'spatial'}
-        self.gcn = Model(2,16,graph_args,edge_importance_weighting=True).cuda()
+        graph_args = {"layout": 'openpose', "strategy": 'spatial'}
+        self.gcn = Model(2, 16, graph_args,
+                         edge_importance_weighting=True).cuda()
         self.gcn.load_state_dict(torch.load(dict_path))
         self.gcn.eval()
         self.criterion = nn.L1Loss()
-        self.weights = [20.0 ,5.0 ,1.0 ,1.0 ,1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  #10 output      
+        self.weights = [20.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                        1.0]  # 10 output
 
-    def forward(self, x, y):              
+    def forward(self, x, y):
         x_gcn, y_gcn = self.gcn.extract_feature(x), self.gcn.extract_feature(y)
         loss = 0
         for i in range(len(x_gcn)):
-            loss_state = self.weights[i] * self.criterion(x_gcn[i], y_gcn[i].detach())  
-            print("VGG_loss "+ str(i),loss_state.item())
-            loss += loss_state       
+            loss_state = self.weights[i] * self.criterion(x_gcn[i],
+                                                          y_gcn[i].detach())
+            print("VGG_loss " + str(i), loss_state.item())
+            loss += loss_state
         return loss

@@ -5,15 +5,15 @@ Other helper functions:
 https://github.com/cs230-stanford/cs230-stanford.github.io
 """
 
+import argparse
 import json
 import logging
 import os
 import shutil
-import torch
-import openpyxl
-import argparse
+
 import numpy as np
-from collections import OrderedDict
+import openpyxl
+import torch
 
 try:
     from StringIO import StringIO  # Python 2.7
@@ -49,7 +49,8 @@ class Params():
 
     @property
     def dict(self):
-        """Gives dict-like access to Params instance by `params.dict['learning_rate']"""
+        """Gives dict-like access to Params instance by `params.dict[
+        'learning_rate']"""
         return self.__dict__
 
 
@@ -77,10 +78,11 @@ class RunningAverage():
         return self.total / float(self.steps)
 
 
-def set_logger(log_file, logger_name = None):
+def set_logger(log_file, logger_name=None):
     """Set the logger to log info in terminal and file `log_path`.
 
-    In general, it is useful to have a logger so that every output to the terminal is saved
+    In general, it is useful to have a logger so that every output to the
+    terminal is saved
     in a permanent file. Here we save it to `model_dir/train.log`.
 
     Example:
@@ -91,13 +93,14 @@ def set_logger(log_file, logger_name = None):
     Args:
         log_path: (string) where to log
     """
-    logger = logging.getLogger(logger_name)# logger name, can have many handlers
+    logger = logging.getLogger(
+        logger_name)  # logger name, can have many handlers
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
 
-    if not logger.handlers: # logger.handlers=[], no handlers
+    if not logger.handlers:  # logger.handlers=[], no handlers
         # Logging to a file
-        file_handler = logging.FileHandler(log_file,mode='w')# log file
+        file_handler = logging.FileHandler(log_file, mode='w')  # log file
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
@@ -115,32 +118,37 @@ def save_dict_to_json(d, json_path):
         json_path: (string) path to json file
     """
     with open(json_path, 'w') as f:
-        # We need to convert the values to float for json (it doesn't accept np.array, np.float, )
+        # We need to convert the values to float for json (it doesn't accept
+        # np.array, np.float, )
         d = {k: float(v) for k, v in d.items()}
         json.dump(d, f, indent=4)
 
 
-def save_checkpoint(state, epoch,is_best,save_best_ever_n_epoch,checkpointpath,start_epoch):
-    """Saves model and training parameters at checkpoint + 'last.pth.tar'. If is_best==True, also saves
+def save_checkpoint(state, epoch, is_best, save_best_ever_n_epoch,
+                    checkpointpath, start_epoch):
+    """Saves model and training parameters at checkpoint + 'last.pth.tar'. If
+    is_best==True, also saves
     checkpoint + 'best.pth.tar'
 
     Args:
-        state: (dict) contains model's state_dict, may contain other keys such as epoch, optimizer state_dict
+        state: (dict) contains model's state_dict, may contain other keys
+        such as epoch, optimizer state_dict
         is_best: (bool) True if it is the best model seen till now
         checkpoint: (string) folder where parameters are to be saved
     """
     checkpoint = checkpointpath
     if not os.path.exists(checkpoint):
-        print("Checkpoint Directory does not exist! Making directory {}".format(checkpoint))
+        print("Checkpoint Directory does not exist! Making directory {}".format(
+            checkpoint))
         os.mkdir(checkpoint)
     # else:
-        # print("Checkpoint Directory exists! ")
+    # print("Checkpoint Directory exists! ")
     filepath = os.path.join(checkpoint, 'last.pth.tar')
     torch.save(state, filepath)
 
     parent_dir = os.path.dirname(checkpoint)
     file_name1 = os.path.join(parent_dir, 'best_accuracy_series.xlsx')
-    if epoch == start_epoch+1:
+    if epoch == start_epoch + 1:
         wb = openpyxl.Workbook(file_name1)
         wb.save(filename=file_name1)
         wb.close()
@@ -148,19 +156,25 @@ def save_checkpoint(state, epoch,is_best,save_best_ever_n_epoch,checkpointpath,s
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'best.pth.tar'))
 
-    if epoch % save_best_ever_n_epoch == 0 :
-        shutil.copyfile(os.path.join(checkpoint, 'best.pth.tar'),os.path.join(checkpoint,'epoch{}.pth.tar'.format(str(epoch))))
+    if epoch % save_best_ever_n_epoch == 0:
+        shutil.copyfile(os.path.join(checkpoint, 'best.pth.tar'),
+                        os.path.join(checkpoint,
+                                     'epoch{}.pth.tar'.format(str(epoch))))
 
         wb = openpyxl.load_workbook(file_name1)
         ws = wb['Sheet']
         max_column = ws.max_column
-        ws.cell(row=1, column=max_column+1).value = 'epoch{}'.format(str(epoch))
-        ws.cell(row=2, column=max_column+1).value = (1-state['best_val_acc'])*100
+        ws.cell(row=1, column=max_column + 1).value = 'epoch{}'.format(
+            str(epoch))
+        ws.cell(row=2, column=max_column + 1).value = (1 - state[
+            'best_val_acc']) * 100
         wb.save(filename=file_name1)
         wb.close()
 
+
 def load_checkpoint(checkpoint, model, optimizer=None):
-    """Loads model parameters (state_dict) from file_path. If optimizer is provided, loads state_dict of
+    """Loads model parameters (state_dict) from file_path. If optimizer is
+    provided, loads state_dict of
     optimizer assuming it is present in checkpoint.
 
     Args:
@@ -173,8 +187,10 @@ def load_checkpoint(checkpoint, model, optimizer=None):
     if torch.cuda.is_available():
         checkpoint = torch.load(checkpoint)
     else:
-        # this helps avoid errors when loading single-GPU-trained weights onto CPU-model
-        checkpoint = torch.load(checkpoint, map_location=lambda storage, loc: storage)
+        # this helps avoid errors when loading single-GPU-trained weights
+        # onto CPU-model
+        checkpoint = torch.load(checkpoint,
+                                map_location=lambda storage, loc: storage)
 
     model.load_state_dict(checkpoint['state_dict'])
 
@@ -213,7 +229,8 @@ def weights_init(m):
             elif 'weight' in name:
                 torch.nn.init.orthogonal(param)
 
-        # Initialize biases for LSTM’s forget gate to 1 to remember more by default. Similarly, initialize biases for GRU’s reset gate to -1.
+        # Initialize biases for LSTM’s forget gate to 1 to remember more by
+        # default. Similarly, initialize biases for GRU’s reset gate to -1.
         for names in m._all_weights:
             for name in filter(lambda n: "bias" in n, names):
                 bias = getattr(m, name)
@@ -237,6 +254,7 @@ def initial_model_weight(layers):
         else:
             for sub_layer in list(layer.children()):
                 initial_model_weight([sub_layer])
+
 
 # initial weight
 # use this when define models

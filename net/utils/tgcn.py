@@ -3,8 +3,8 @@
 import torch
 import torch.nn as nn
 
-class ConvTemporalGraphical(nn.Module):
 
+class ConvTemporalGraphical(nn.Module):
     r"""The basic module for applying a graph convolution.
 
     Args:
@@ -21,14 +21,18 @@ class ConvTemporalGraphical(nn.Module):
             Default: ``True``
 
     Shape:
-        - Input[0]: Input graph sequence in :math:`(N, in_channels, T_{in}, V)` format
+        - Input[0]: Input graph sequence in :math:`(N, in_channels, T_{in},
+        V)` format
         - Input[1]: Input graph adjacency matrix in :math:`(K, V, V)` format
-        - Output[0]: Outpu graph sequence in :math:`(N, out_channels, T_{out}, V)` format
-        - Output[1]: Graph adjacency matrix for output data in :math:`(K, V, V)` format
+        - Output[0]: Outpu graph sequence in :math:`(N, out_channels,
+        T_{out}, V)` format
+        - Output[1]: Graph adjacency matrix for output data in :math:`(K, V,
+        V)` format
 
         where
             :math:`N` is a batch size,
-            :math:`K` is the spatial kernel size, as :math:`K == kernel_size[1]`,
+            :math:`K` is the spatial kernel size, as :math:`K == kernel_size[
+            1]`,
             :math:`T_{in}/T_{out}` is a length of input/output sequence,
             :math:`V` is the number of graph nodes. 
     """
@@ -60,7 +64,7 @@ class ConvTemporalGraphical(nn.Module):
         x = self.conv(x)
 
         n, kc, t, v = x.size()
-        x = x.view(n, self.kernel_size, kc//self.kernel_size, t, v)
+        x = x.view(n, self.kernel_size, kc // self.kernel_size, t, v)
         x = torch.einsum('nkctv,kvw->nctw', (x, A))
 
         return x.contiguous(), A

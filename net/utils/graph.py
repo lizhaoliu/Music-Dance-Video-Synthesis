@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Graph():
     """ The Graph to model the skeletons extracted by the openpose
 
@@ -13,7 +14,8 @@ class Graph():
 
         layout (string): must be one of the follow candidates
         - openpose: Is consists of 18 joints. For more information, please
-            refer to https://github.com/CMU-Perceptual-Computing-Lab/openpose#output
+            refer to https://github.com/CMU-Perceptual-Computing-Lab/openpose
+            #output
         - ntu-rgb+d: Is consists of 25 joints. For more information, please
             refer to https://github.com/shahroudy/NTURGB-D
 
@@ -102,11 +104,11 @@ class Graph():
                     for j in range(self.num_node):
                         if self.hop_dis[j, i] == hop:
                             if self.hop_dis[j, self.center] == self.hop_dis[
-                                    i, self.center]:
+                                i, self.center]:
                                 a_root[j, i] = normalize_adjacency[j, i]
                             elif self.hop_dis[j, self.
-                                              center] > self.hop_dis[i, self.
-                                                                     center]:
+                                    center] > self.hop_dis[i, self.
+                                    center]:
                                 a_close[j, i] = normalize_adjacency[j, i]
                             else:
                                 a_further[j, i] = normalize_adjacency[j, i]
@@ -142,7 +144,7 @@ def normalize_digraph(A):
     Dn = np.zeros((num_node, num_node))
     for i in range(num_node):
         if Dl[i] > 0:
-            Dn[i, i] = Dl[i]**(-1)
+            Dn[i, i] = Dl[i] ** (-1)
     AD = np.dot(A, Dn)
     return AD
 
@@ -153,6 +155,6 @@ def normalize_undigraph(A):
     Dn = np.zeros((num_node, num_node))
     for i in range(num_node):
         if Dl[i] > 0:
-            Dn[i, i] = Dl[i]**(-0.5)
+            Dn[i, i] = Dl[i] ** (-0.5)
     DAD = np.dot(np.dot(Dn, A), Dn)
     return DAD
