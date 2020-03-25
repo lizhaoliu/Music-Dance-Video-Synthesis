@@ -1,4 +1,5 @@
 import math
+import os
 
 import cv2
 import numpy as np
@@ -109,6 +110,19 @@ def save_batch_images(coors, batch_num,
         output_dir = target_dir + '/' + idx + '.jpeg'
         img = draw_pose_figure(reshape_coors[i])
         cv2.imwrite(output_dir, img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+
+def save_batch_images_continuously(coors, batch_num,
+                                   output_dir='/mnt/external4/output_demo'):
+    reshape_coors = coors.reshape([50, 18, 2])
+    for i in range(reshape_coors.shape[0]):
+        idx = i + batch_num * reshape_coors.shape[0]
+        idx = str("%03d" % idx)
+
+        makemydir(output_dir)
+        output_path = os.path.join(output_dir, idx + '.jpeg')
+        img = draw_pose_figure(reshape_coors[i])
+        cv2.imwrite(output_path, img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
 
 
 def save_batch_images_long(coors, batch_num,
