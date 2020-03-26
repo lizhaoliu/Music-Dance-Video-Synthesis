@@ -11,14 +11,9 @@ from model import pose_generator_norm
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('model',
-                    '/home/lizhaoliu/repos/Music-Dance-Video-Synthesis/log'
-                    '/model/best_generator_0400.pth',
-                    'Path to trained model file.')
-flags.DEFINE_string('audio', '/home/lizhaoliu/Downloads/sample.wav',
-                    'Path to audio file.')
-flags.DEFINE_string('output_dir', '/home/lizhaoliu/tmp/sample_wav',
-                    'Path to audio file.')
+flags.DEFINE_string('model', '', 'Path to trained model file.')
+flags.DEFINE_string('audio', '', 'Path to audio file.')
+flags.DEFINE_string('output_dir', '', 'Path to audio file.')
 flags.DEFINE_integer('frame_width', 360, 'Single frame width.')
 flags.DEFINE_integer('frame_height', 640, 'Single frame height.')
 
@@ -79,7 +74,8 @@ def main(args):
         g_pose[:, :, 0] = (g_pose[:, :, 0] + 1) * (FLAGS.frame_height // 2)
         g_pose[:, :, 1] = (g_pose[:, :, 1] + 1) * (FLAGS.frame_width // 2)
         g_pose = g_pose.astype(np.int)
-        output_helper.save_batch_images_continuously(g_pose, i, FLAGS.output_dir)
+        output_helper.save_batch_images_continuously(g_pose, i,
+                                                     FLAGS.output_dir)
 
 
 if __name__ == '__main__':
