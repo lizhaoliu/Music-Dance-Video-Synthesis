@@ -10,6 +10,7 @@ import io
 import json
 import librosa
 import numpy as np
+import subprocess
 from torch.utils.data import dataset
 from absl import app
 from absl import flags
@@ -40,7 +41,13 @@ class AudioDataset(dataset.Dataset):
     """
 
     def __init__(self, audio_binary: bytes) -> None:
-        f = io.BytesIO(audio_binary)
+        args = (
+            '/usr/bin/ffmpeg', '-i', '-', '-ac', '1', '-ar', str(_SR), '-f',
+            'wav', '-')
+        c = subprocess.run(args, input=audio_binary, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, shell=False)
+        c.check_returncode()
+        f = io.BytesIO(c.stdout)
         x, sr = librosa.load(f, sr=None)
         x = librosa.resample(x, sr, _SR)
         x = (x * (2 ** 15)).astype(np.int16)
