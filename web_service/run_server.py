@@ -10,8 +10,10 @@ import io
 import json
 import librosa
 import os
+import random
 import numpy as np
 import subprocess
+import shutil
 from torch.utils.data import dataset
 from absl import app as absl_app
 from absl import flags
@@ -31,6 +33,7 @@ flags.DEFINE_integer('port', 9876, 'Server port.')
 flags.DEFINE_integer('frame_width', 360, 'Single frame width.')
 flags.DEFINE_integer('frame_height', 640, 'Single frame height.')
 flags.DEFINE_string('model', '', 'Path to trained model file.')
+flags.DEFINE_string('ffmpeg_path', '/usr/bin/ffmpeg', 'FFMPEG binary path.')
 flags.DEFINE_string('upload_folder', 'upload',
                     'Relative path to upload folder.')
 
@@ -51,7 +54,7 @@ class AudioDataset(dataset.Dataset):
 
     def __init__(self, audio_binary: bytes) -> None:
         args = (
-            '/usr/bin/ffmpeg', '-i', '-', '-ac', '1', '-ar', str(_SR), '-f',
+            FLAGS.ffmpeg_path, '-i', '-', '-ac', '1', '-ar', str(_SR), '-f',
             'wav', '-')
         c = subprocess.run(args, input=audio_binary, stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE, shell=False)
@@ -109,6 +112,7 @@ def dance():
         # Loads input audio into dataset.
         audio_binary = request.get_data()
         if not audio_binary:
+            logging.warning('Uploaded audio binary is empty.')
             flask.abort(400)
         pose_sequence = _create_pose_seq(audio_binary)
         elapsed_time = time.time() - start_time
@@ -120,29 +124,35 @@ def dance():
         return response
 
 
-@app.route('/dance_figure', methods=['POST'])
+@app.route('/dance_figure', methods=['POST', 'GET'])
 def dance_figure():
     if request.method == 'POST':
         start_time = time.time()
         f = request.files['uploaded_file']
         audio_binary = f.read()
+        if not audio_binary:
+            logging.warning('Uploaded audio binary is empty.')
+            flask.abort(400)
+
         upload_dir = get_upload_dir()
         filepath = os.path.join(upload_dir, utils.secure_filename(f.filename))
         output_dir = f'{filepath}_pose'
-        output_video = os.path.join(output_dir, 'dance_figure.mp4')
-        if not audio_binary:
-            flask.abort(400)
+        # output_video = os.path.join(output_dir, 'dance_figure.mp4')
+        v_file = f'{time.strftime("%H_%M_%S")}_{random.randint(0, 100)}.mp4'
+        output_video = os.path.join(os.path.dirname(__file__), 'static', v_file)
         pose_sequence = _create_pose_seq(audio_binary)
         pose_sequence[:, :, 0] = (pose_sequence[:, :, 0] + 1) * (
                 FLAGS.frame_height // 2)
         pose_sequence[:, :, 1] = (pose_sequence[:, :, 1] + 1) * (
                 FLAGS.frame_width // 2)
         pose_sequence = pose_sequence.astype(np.int)
+        # Save pose sequence to image sequence.
         output_helper.save_batch_images_continuously(pose_sequence, 0,
                                                      output_dir)
 
+        # Render a video using audio and image sequence.
         args = (
-            '/usr/bin/ffmpeg',
+            FLAGS.ffmpeg_path,
             '-r', str(_FPS),
             '-i', os.path.join(output_dir, '%d.png'),
             '-i', '-',
@@ -151,15 +161,17 @@ def dance_figure():
             output_video)
         c = subprocess.run(args, input=audio_binary, shell=False)
         c.check_returncode()
+
         elapsed_time = time.time() - start_time
         logging.info(
             f'Elapsed time: {elapsed_time:.2f} s, audio size: '
             f'{len(audio_binary)} B.')
-        with open(output_video, 'rb') as vf:
-            vbin = vf.read()
-        # shutil.rmtree(output_dir)
-        return flask.Response(vbin, status=200, mimetype='video/mp4',
-                              content_type='video/mp4', direct_passthrough=True)
+
+        shutil.rmtree(output_dir)
+        return flask.render_template('result_video.html',
+                                     video_width=FLAGS.frame_width,
+                                     video_height=FLAGS.frame_height,
+                                     video_src=os.path.join('static', v_file))
 
 
 @app.route('/', methods=['GET'])

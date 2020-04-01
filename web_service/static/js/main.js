@@ -21,9 +21,12 @@ $(document).ready(function () {
         }
     });
 
-    // $('#btn-start').click(function () {
-    //     // Make POST call to the server.
-    //     $.post('/dance_figure', $('#upload-file').serialize()).done(function (data) {
+    // Make POST call to the server.
+    // $('#upload-file').submit(function (e) {
+    //     e.preventDefault();
+    //     var url = $(this).attr('action');
+    //     var data = $(this).serialize();
+    //     $.post(url, data).done(function (data) {
     //         console.log(data);
     //     });
     // });
