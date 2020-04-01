@@ -9,28 +9,37 @@ import time
 import io
 import json
 import librosa
+import os
 import numpy as np
 import subprocess
 from torch.utils.data import dataset
-from absl import app
+from absl import app as absl_app
 from absl import flags
 from absl import logging
 from flask import request
 from torch import autograd
 from gevent import pywsgi
+from dataset import output_helper
+from werkzeug import utils
 
-_app = flask.Flask(__name__)
-_generator = None
+app = flask.Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('port', 9876, 'Server port')
+flags.DEFINE_integer('port', 9876, 'Server port.')
+flags.DEFINE_integer('frame_width', 360, 'Single frame width.')
+flags.DEFINE_integer('frame_height', 640, 'Single frame height.')
 flags.DEFINE_string('model', '', 'Path to trained model file.')
+flags.DEFINE_string('upload_folder', 'upload',
+                    'Relative path to upload folder.')
 
 _SR = 16000
 _FPS = 10
 _N_FRAMES_CHUNK = 50
 _N_JOINTS = 18
+
+_generator = None
 
 
 class AudioDataset(dataset.Dataset):
@@ -63,40 +72,108 @@ class AudioDataset(dataset.Dataset):
         return self.x.shape[0] // _N_FRAMES_CHUNK
 
 
-@_app.route('/create_dance', methods=['POST'])
-def create_dance():
+def _create_pose_seq(audio_binary):
+    """Creates pose sequence from given audio binary.
+
+    Args:
+        audio_binary: audio binary in bytes.
+
+    Returns:
+        A numpy array denoting the pose sequence, of shape (frames, 18, 2).
+    """
+    ds = AudioDataset(audio_binary)
+    dataloader = torch.utils.data.DataLoader(ds,
+                                             batch_size=1,
+                                             shuffle=False,
+                                             num_workers=4,
+                                             pin_memory=False)
+
+    # Run inference.
+    global _generator
+    poses = []
+    for i, audio_chunk in enumerate(dataloader):
+        audio_chunk = autograd.Variable(
+            audio_chunk.type(torch.cuda.FloatTensor))
+        pose_chunk = _generator(audio_chunk)
+        pose_chunk = pose_chunk.contiguous().cpu().detach().numpy()
+        pose_chunk = pose_chunk.reshape((_N_FRAMES_CHUNK, _N_JOINTS, 2))
+        poses.append(pose_chunk)
+    pose_sequence = np.concatenate(poses, 0)
+    return pose_sequence
+
+
+@app.route('/dance', methods=['POST'])
+def dance():
     if request.method == 'POST':
         start_time = time.time()
         # Loads input audio into dataset.
         audio_binary = request.get_data()
         if not audio_binary:
             flask.abort(400)
-        ds = AudioDataset(audio_binary)
-        dataloader = torch.utils.data.DataLoader(ds,
-                                                 batch_size=1,
-                                                 shuffle=False,
-                                                 num_workers=4,
-                                                 pin_memory=False)
-
-        # Run inference.
-        global _generator
-        poses = []
-        for i, audio_chunk in enumerate(dataloader):
-            audio_chunk = autograd.Variable(
-                audio_chunk.type(torch.cuda.FloatTensor))
-            pose_chunk = _generator(audio_chunk)
-            pose_chunk = pose_chunk.contiguous().cpu().detach().numpy()
-            pose_chunk = pose_chunk.reshape((_N_FRAMES_CHUNK, _N_JOINTS, 2))
-            poses.append(pose_chunk)
-        pose_sequence = np.concatenate(poses, 0)
-        pose_sequence.tolist()
+        pose_sequence = _create_pose_seq(audio_binary)
         elapsed_time = time.time() - start_time
         logging.info(
             f'Elapsed time: {elapsed_time:.2f} s, audio size: '
             f'{len(audio_binary)} B.')
-        response = _app.response_class(
+        response = app.response_class(
             response=json.dumps({'pose_sequence': pose_sequence.tolist()}))
         return response
+
+
+@app.route('/dance_figure', methods=['POST'])
+def dance_figure():
+    if request.method == 'POST':
+        start_time = time.time()
+        f = request.files['uploaded_file']
+        audio_binary = f.read()
+        upload_dir = get_upload_dir()
+        filepath = os.path.join(upload_dir, utils.secure_filename(f.filename))
+        output_dir = f'{filepath}_pose'
+        output_video = os.path.join(output_dir, 'dance_figure.mp4')
+        if not audio_binary:
+            flask.abort(400)
+        pose_sequence = _create_pose_seq(audio_binary)
+        pose_sequence[:, :, 0] = (pose_sequence[:, :, 0] + 1) * (
+                FLAGS.frame_height // 2)
+        pose_sequence[:, :, 1] = (pose_sequence[:, :, 1] + 1) * (
+                FLAGS.frame_width // 2)
+        pose_sequence = pose_sequence.astype(np.int)
+        output_helper.save_batch_images_continuously(pose_sequence, 0,
+                                                     output_dir)
+
+        args = (
+            '/usr/bin/ffmpeg',
+            '-r', str(_FPS),
+            '-i', os.path.join(output_dir, '%d.png'),
+            '-i', '-',
+            '-r', str(_FPS),
+            '-y',
+            output_video)
+        c = subprocess.run(args, input=audio_binary, shell=False)
+        c.check_returncode()
+        elapsed_time = time.time() - start_time
+        logging.info(
+            f'Elapsed time: {elapsed_time:.2f} s, audio size: '
+            f'{len(audio_binary)} B.')
+        with open(output_video, 'rb') as vf:
+            vbin = vf.read()
+        # shutil.rmtree(output_dir)
+        return flask.Response(vbin, status=200, mimetype='video/mp4',
+                              content_type='video/mp4', direct_passthrough=True)
+
+
+@app.route('/', methods=['GET'])
+def index():
+    """Index page."""
+    return flask.render_template('index.html')
+
+
+def get_upload_dir():
+    base_path = os.path.dirname(__file__)
+    upload_dir = os.path.join(base_path, FLAGS.upload_folder)
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    return upload_dir
 
 
 def main(args):
@@ -112,9 +189,9 @@ def main(args):
     _generator.cuda()
 
     logging.info(f'Start server on :{FLAGS.port}...')
-    http_server = pywsgi.WSGIServer(('', FLAGS.port), _app)
+    http_server = pywsgi.WSGIServer(('', FLAGS.port), app)
     http_server.serve_forever()
 
 
 if __name__ == '__main__':
-    app.run(main)
+    absl_app.run(main)

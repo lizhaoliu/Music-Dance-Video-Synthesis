@@ -114,7 +114,7 @@ def save_batch_images(coors, batch_num,
 
 def save_batch_images_continuously(coors, batch_num,
                                    output_dir='/mnt/external4/output_demo'):
-    reshape_coors = coors.reshape([50, 18, 2])
+    reshape_coors = coors.reshape([-1, 18, 2])
     for i in range(reshape_coors.shape[0]):
         idx = i + batch_num * reshape_coors.shape[0]
 
