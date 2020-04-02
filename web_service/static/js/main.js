@@ -28,6 +28,20 @@ $(document).ready(function () {
         $("#video").hide();
 
         $.ajax({
+            xhr: function () {
+                var xhr = new window.XMLHttpRequest();
+                xhr.upload.addEventListener("progress", function (evt) {
+                    if (evt.lengthComputable) {
+                        var percentComplete = evt.loaded / evt.total;
+                        $("#video-banner").text("Uploaded: " + percentComplete * 100 + "%");
+                        console.log(percentComplete);
+                        if (percentComplete === 1) {
+                            $("#video-banner").text("Upload completed, server processing...")
+                        }
+                    }
+                }, false);
+                return xhr;
+            },
             url: "/dance_figure",
             type: "POST",
             cache: false,
