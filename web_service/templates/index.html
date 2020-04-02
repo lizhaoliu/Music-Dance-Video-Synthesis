@@ -25,17 +25,17 @@
             <label class="custom-file-label" for="audio-upload">Choose file</label>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-lg" id="btn-start">Start</button>
+        <button type="button" class="btn btn-primary btn-lg" id="btn-start">Start</button>
     </form>
     <div>
     </div>
 </div>
-<!--<div class="container p-3 my-3 border">-->
-<!--    <h4>Ready video</h4>-->
-<!--    <video id="dance-video" width="360" height="640" controls>-->
-<!--        Your browser does not support the video tag.-->
-<!--    </video>-->
-<!--</div>-->
+<div class="container p-3 my-3 border">
+    <h4 id="video-banner"></h4>
+    <video id="video" width="{{ video_width }}" height="{{ video_height }}" controls>
+        Your browser does not support the video tag.
+    </video>
+</div>
 
 <script src="https://code.jquery.com/jquery-3.4.1.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"

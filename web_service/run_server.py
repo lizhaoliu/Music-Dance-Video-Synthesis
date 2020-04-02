@@ -14,18 +14,21 @@ import random
 import numpy as np
 import subprocess
 import shutil
+import base64
 from torch.utils.data import dataset
 from absl import app as absl_app
 from absl import flags
 from absl import logging
+from concurrent import futures
 from flask import request
 from torch import autograd
 from gevent import pywsgi
 from dataset import output_helper
-from werkzeug import utils
 
 app = flask.Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
+app._static_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                                  'static')
 
 FLAGS = flags.FLAGS
 
@@ -43,6 +46,7 @@ _N_FRAMES_CHUNK = 50
 _N_JOINTS = 18
 
 _generator = None
+_exec = futures.ThreadPoolExecutor()
 
 
 class AudioDataset(dataset.Dataset):
@@ -124,10 +128,23 @@ def dance():
         return response
 
 
+def _remove_after(filepath, delay):
+    time.sleep(delay)
+    os.remove((filepath))
+
+
+def _read_file_chunk(fd, chunk_size=8192):
+    while True:
+        buf = fd.read(chunk_size)
+        if buf:
+            yield buf
+        else:
+            break
+
+
 @app.route('/dance_figure', methods=['POST', 'GET'])
 def dance_figure():
     if request.method == 'POST':
-        start_time = time.time()
         f = request.files['uploaded_file']
         audio_binary = f.read()
         if not audio_binary:
@@ -135,10 +152,9 @@ def dance_figure():
             flask.abort(400)
 
         upload_dir = get_upload_dir()
-        filepath = os.path.join(upload_dir, utils.secure_filename(f.filename))
-        output_dir = f'{filepath}_pose'
-        # output_video = os.path.join(output_dir, 'dance_figure.mp4')
-        v_file = f'{time.strftime("%H_%M_%S")}_{random.randint(0, 100)}.mp4'
+        common_name = f'{time.strftime("%H_%M_%S")}_{random.randint(0, 1000)}'
+        output_dir = os.path.join(upload_dir, common_name)
+        v_file = f'{common_name}.mp4'
         output_video = os.path.join(os.path.dirname(__file__), 'static', v_file)
         pose_sequence = _create_pose_seq(audio_binary)
         pose_sequence[:, :, 0] = (pose_sequence[:, :, 0] + 1) * (
@@ -161,23 +177,25 @@ def dance_figure():
             output_video)
         c = subprocess.run(args, input=audio_binary, shell=False)
         c.check_returncode()
-
-        elapsed_time = time.time() - start_time
-        logging.info(
-            f'Elapsed time: {elapsed_time:.2f} s, audio size: '
-            f'{len(audio_binary)} B.')
-
+        with open(output_video, 'rb') as vf:
+            vid_binary = vf.read()
+            # Only base64 encoded binary be fed to HTML5 <video> element.
+            b64_vid_binary = base64.b64encode(vid_binary)
+            bb = io.BytesIO(b64_vid_binary)
         shutil.rmtree(output_dir)
-        return flask.render_template('result_video.html',
-                                     video_width=FLAGS.frame_width,
-                                     video_height=FLAGS.frame_height,
-                                     video_src=os.path.join('static', v_file))
+        os.remove(output_video)
+
+        return flask.Response(flask.stream_with_context(_read_file_chunk(bb)),
+                              mimetype='video/mp4',
+                              content_type='video/mp4',
+                              direct_passthrough=True)
 
 
 @app.route('/', methods=['GET'])
 def index():
     """Index page."""
-    return flask.render_template('index.html')
+    return flask.render_template('index.html', video_width=FLAGS.frame_width,
+                                 video_height=FLAGS.frame_height)
 
 
 def get_upload_dir():
@@ -188,9 +206,8 @@ def get_upload_dir():
     return upload_dir
 
 
-def main(args):
-    del args
-
+def _init_model():
+    """Loads and initializes PyTorch model."""
     logging.info(f"Loading model from '{FLAGS.model}'...")
     if not FLAGS.model:
         logging.fatal('Model path is not set.')
@@ -199,6 +216,12 @@ def main(args):
     _generator.eval()
     _generator.load_state_dict(torch.load(FLAGS.model))
     _generator.cuda()
+
+
+def main(args):
+    del args
+
+    _init_model()
 
     logging.info(f'Start server on :{FLAGS.port}...')
     http_server = pywsgi.WSGIServer(('', FLAGS.port), app)
