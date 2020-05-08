@@ -33,8 +33,9 @@ app._static_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)),
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('port', 9876, 'Server port.')
-flags.DEFINE_integer('frame_width', 360, 'Single frame width.')
-flags.DEFINE_integer('frame_height', 640, 'Single frame height.')
+flags.DEFINE_integer('frame_width', 640, 'Single frame width.')
+flags.DEFINE_integer('frame_height', 360, 'Single frame height.')
+flags.DEFINE_integer('target_fps', 60, 'Desired output pose animation FPS.')
 flags.DEFINE_string('model', '', 'Path to trained model file.')
 flags.DEFINE_string('ffmpeg_path', '/usr/bin/ffmpeg', 'FFMPEG binary path.')
 flags.DEFINE_string('upload_folder', 'upload',
@@ -142,6 +143,21 @@ def _read_file_chunk(fd, chunk_size=8192):
             break
 
 
+def _inter_frame_interpolation(pose_seq, target_fps=30):
+    n_frames, n_joints, _ = pose_seq.shape
+    new_frames = int(n_frames * target_fps / _FPS)
+    p = np.linspace(0, 1, n_frames)
+    pnew = np.linspace(0, 1, new_frames)
+    lst = []
+    for i in range(n_joints):
+        x = pose_seq[:, i, 0]
+        y = pose_seq[:, i, 1]
+        xinterp = np.interp(pnew, p, x)
+        yinterp = np.interp(pnew, p, y)
+        lst.append(np.stack((xinterp, yinterp), axis=1))
+    return np.stack(lst, axis=1)
+
+
 @app.route('/dance_figure', methods=['POST', 'GET'])
 def dance_figure():
     if request.method == 'POST':
@@ -158,10 +174,11 @@ def dance_figure():
         output_video = os.path.join(os.path.dirname(__file__), 'static', v_file)
         pose_sequence = _create_pose_seq(audio_binary)
         pose_sequence[:, :, 0] = (pose_sequence[:, :, 0] + 1) * (
-                FLAGS.frame_height // 2)
-        pose_sequence[:, :, 1] = (pose_sequence[:, :, 1] + 1) * (
                 FLAGS.frame_width // 2)
+        pose_sequence[:, :, 1] = (pose_sequence[:, :, 1] + 1) * (
+                FLAGS.frame_height // 2)
         pose_sequence = pose_sequence.astype(np.int)
+        pose_sequence = _inter_frame_interpolation(pose_sequence, FLAGS.target_fps)
         # Save pose sequence to image sequence.
         output_helper.save_batch_images_continuously(pose_sequence, 0,
                                                      output_dir)
@@ -169,10 +186,10 @@ def dance_figure():
         # Render a video using audio and image sequence.
         args = (
             FLAGS.ffmpeg_path,
-            '-r', str(_FPS),
+            '-r', str(FLAGS.target_fps),
             '-i', os.path.join(output_dir, '%d.png'),
             '-i', '-',
-            '-r', str(_FPS),
+            '-r', str(FLAGS.target_fps),
             '-y',
             output_video)
         c = subprocess.run(args, input=audio_binary, shell=False)

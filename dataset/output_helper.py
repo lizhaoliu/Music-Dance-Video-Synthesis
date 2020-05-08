@@ -19,7 +19,7 @@ colors = [
 
 
 def draw_pose_figure(coors, height=360, width=640, limb_thickness=4):
-    canvas = np.ones([height, width, 3]) * 255
+    canvas = np.zeros([height, width, 3]) * 255
     canvas = canvas.astype(np.uint8)
     limb_type = 0
     for joint_relation in joint_to_limb_heatmap_relationship:
